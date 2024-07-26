@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统监控</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        .chart-container { width: 80%; margin: 20px auto; }
+    </style>
+</head>
+<body>
+    <h1>系统监控</h1>
+    <div class="chart-container">
+        <canvas id="cpuChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="ioChart"></canvas>
+    </div>
+    <div id="status"></div>
+    <script>
+        const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+        const ioCtx = document.getElementById('ioChart').getContext('2d');
+        const statusElement = document.getElementById('status');
+
+        const cpuChart = new Chart(cpuCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU 使用率 (%)',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        const ioChart = new Chart(ioCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: '平均 I/O 等待时间 (ms)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const ws = new WebSocket('ws://43.133.212.191:8080/ws');
+        
+        ws.onopen = function() {
+            console.log("WebSocket 连接已建立");
+            statusElement.textContent = "WebSocket 连接已建立";
+        };
+        
+        ws.onmessage = function(event) {
+            const [cpuUsage, ioWaitTime] = event.data.split(',').map(Number);
+            
+            const now = new Date();
+            const timeStr = now.getHours() + ':' + now.getMinutes() + ':' + now.getSeconds();
+            
+            updateChart(cpuChart, timeStr, cpuUsage);
+            updateChart(ioChart, timeStr, ioWaitTime);
+            
+            statusElement.textContent = `CPU: ${cpuUsage.toFixed(2)}%, I/O等待: ${ioWaitTime.toFixed(2)}ms`;
+        };
+        
+        function updateChart(chart, label, value) {
+            chart.data.labels.push(label);
+            chart.data.datasets[0].data.push(value);
+            
+            if (chart.data.labels.length > 30) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+            
+            chart.update();
+        }
+        
+        ws.onerror = function(error) {
+            console.error("WebSocket 错误:", error);
+            statusElement.textContent = "WebSocket 错误";
+        };
+        
+        ws.onclose = function() {
+            console.log("WebSocket 连接已关闭");
+            statusElement.textContent = "WebSocket 连接已关闭";
+        };
+    </script>
+</body>
+</html>
