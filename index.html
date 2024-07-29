@@ -1,35 +1,61 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>系统监控</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        .chart-container { width: 80%; margin: 20px auto; }
+        .chart-container {
+            width: 400px;
+            height: 200px;
+            display: inline-block;
+            margin: 10px;
+        }
+        .button-container {
+            margin-top: 20px;
+        }
+        button {
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
     <h1>系统监控</h1>
+
     <div class="chart-container">
         <canvas id="cpuChart"></canvas>
     </div>
     <div class="chart-container">
         <canvas id="ioChart"></canvas>
     </div>
-    <div id="status"></div>
-    <script>
-        const cpuCtx = document.getElementById('cpuChart').getContext('2d');
-        const ioCtx = document.getElementById('ioChart').getContext('2d');
-        const statusElement = document.getElementById('status');
+    <div class="chart-container">
+        <canvas id="connectionsChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="cacheHitRatioChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="transactionCommitRateChart"></canvas>
+    </div>
 
-        const cpuChart = new Chart(cpuCtx, {
+    <div class="button-container">
+        <button onclick="backupTable()">备份表</button>
+        <button onclick="restoreTable()">恢复表</button>
+        <button onclick="compareTables()">比较表</button>
+    </div>
+
+    <div id="output"></div>
+    <div id="status"></div>
+    <div id="comparisonResult"></div>
+
+    <script>
+        const cpuChart = new Chart(document.getElementById('cpuChart').getContext('2d'), {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'CPU 使用率 (%)',
+                    label: 'CPU Usage (%)',
                     data: [],
                     borderColor: 'rgb(75, 192, 192)',
                     tension: 0.1
@@ -45,12 +71,12 @@
             }
         });
 
-        const ioChart = new Chart(ioCtx, {
+        const ioChart = new Chart(document.getElementById('ioChart').getContext('2d'), {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [{
-                    label: '平均 I/O 等待时间 (ms)',
+                    label: 'Average I/O Time (ms)',
                     data: [],
                     borderColor: 'rgb(255, 99, 132)',
                     tension: 0.1
@@ -65,46 +91,122 @@
             }
         });
 
-        const ws = new WebSocket('ws://43.133.212.191:8080/ws');
-        
-        ws.onopen = function() {
-            console.log("WebSocket 连接已建立");
-            statusElement.textContent = "WebSocket 连接已建立";
+        const connectionsChart = new Chart(document.getElementById('connectionsChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Active Connections',
+                    data: [],
+                    borderColor: 'rgb(54, 162, 235)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const cacheHitRatioChart = new Chart(document.getElementById('cacheHitRatioChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Cache Hit Ratio (%)',
+                    data: [],
+                    borderColor: 'rgb(255, 206, 86)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        const transactionCommitRateChart = new Chart(document.getElementById('transactionCommitRateChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Transaction Commit Rate (%)',
+                    data: [],
+                    borderColor: 'rgb(153, 102, 255)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        const socket = new WebSocket('ws://' + window.location.host + '/ws');
+
+        socket.onmessage = function(event) {
+            const data = event.data.split(',');
+            const cpuUsage = parseFloat(data[0]);
+            const avgIOTime = parseFloat(data[1]);
+            const activeConnections = parseFloat(data[2]);
+            const cacheHitRatio = parseFloat(data[3]);
+            const transactionCommitRate = parseFloat(data[4]);
+
+            const timestamp = new Date().toLocaleTimeString();
+
+            updateChart(cpuChart, timestamp, cpuUsage);
+            updateChart(ioChart, timestamp, avgIOTime);
+            updateChart(connectionsChart, timestamp, activeConnections);
+            updateChart(cacheHitRatioChart, timestamp, cacheHitRatio);
+            updateChart(transactionCommitRateChart, timestamp, transactionCommitRate);
         };
-        
-        ws.onmessage = function(event) {
-            const [cpuUsage, ioWaitTime] = event.data.split(',').map(Number);
-            
-            const now = new Date();
-            const timeStr = now.getHours() + ':' + now.getMinutes() + ':' + now.getSeconds();
-            
-            updateChart(cpuChart, timeStr, cpuUsage);
-            updateChart(ioChart, timeStr, ioWaitTime);
-            
-            statusElement.textContent = `CPU: ${cpuUsage.toFixed(2)}%, I/O等待: ${ioWaitTime.toFixed(2)}ms`;
-        };
-        
+
         function updateChart(chart, label, value) {
             chart.data.labels.push(label);
             chart.data.datasets[0].data.push(value);
-            
-            if (chart.data.labels.length > 30) {
+
+            if (chart.data.labels.length > 60) {
                 chart.data.labels.shift();
                 chart.data.datasets[0].data.shift();
             }
-            
+
             chart.update();
         }
-        
-        ws.onerror = function(error) {
-            console.error("WebSocket 错误:", error);
-            statusElement.textContent = "WebSocket 错误";
-        };
-        
-        ws.onclose = function() {
-            console.log("WebSocket 连接已关闭");
-            statusElement.textContent = "WebSocket 连接已关闭";
-        };
+
+        function backupTable() {
+            fetch('/backup', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('output').innerText = data;
+                });
+        }
+
+        function restoreTable() {
+            fetch('/restore', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('output').innerText = data;
+                });
+        }
+
+        function compareTables() {
+            fetch('/compare', { method: 'POST' })
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('comparisonResult').innerText = data;
+                });
+        }
     </script>
 </body>
 </html>
